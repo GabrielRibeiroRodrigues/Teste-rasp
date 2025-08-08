@@ -6,6 +6,12 @@ scipy==1.10.1
 easyocr==1.7.0
 filterpy==1.4.5
 keyboard
-filterpy==1.4.5
+# Needed to unpickle some legacy YOLO checkpoints
+dill>=0.3.6
+# Optional: pin PyTorch stack to avoid future 'weights_only' changes breaking legacy checkpoints
+# Choose one set (CPU or CUDA) and install accordingly. Leaving commented to avoid forcing environment changes.
+# torch==2.5.1
+# torchvision==0.20.1
+# torchaudio==2.5.1
 # scikit-image==0.17.2
 # lap==0.4.0

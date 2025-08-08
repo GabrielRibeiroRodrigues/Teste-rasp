@@ -1,4 +1,27 @@
+import sys
 from ultralytics import YOLO
+# Compat: alguns checkpoints antigos referenciam 'ultralytics.utils'. Em versões antigas, utils ficava em 'ultralytics.yolo.utils'.
+# Tente importar e, se não existir, crie um alias para manter compatibilidade durante o unpickling.
+try:
+    import ultralytics.utils as _yu  # type: ignore
+except Exception:
+    try:
+        import ultralytics.yolo.utils as _yu  # type: ignore
+        sys.modules['ultralytics.utils'] = _yu  # cria alias para o caminho antigo
+    except Exception as _e:
+        print(
+            f"Aviso: não foi possível preparar 'ultralytics.utils' ({_e}). O carregamento de pesos pode falhar.",
+            file=sys.stderr,
+        )
+        _yu = None
+        
+import torch
+from ultralytics.nn.tasks import DetectionModel
+if hasattr(torch, "serialization") and hasattr(torch.serialization, "add_safe_globals"):
+    try:
+        torch.serialization.add_safe_globals([DetectionModel])
+    except Exception as _e:
+        print(f"Aviso: falha ao ajustar torch safe globals: {_e}", file=sys.stderr)
 import cv2
 import numpy as np 
 from datetime import datetime
@@ -8,9 +31,9 @@ import threading
 import queue
 
 # --- Constants ---
-MODEL_PATH = "C:\\Users\\user\\Desktop\\bestn.pt"
+MODEL_PATH = "C:\\Users\\projeto\\Desktop\\bestn.pt"
 # VIDEO_SOURCE = "C:\\Users\\12265587630\\Desktop\\g.mp4"
-VIDEO_SOURCE = "rtsp://admin:123456789abc@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0" # Example RTSP alternative
+VIDEO_SOURCE = "rtsp://admin:123456789abc@10.12.8.63:554/cam/realmonitor?channel=1&subtype=0" # Example RTSP alternative
 CONFIDENCE_THRESHOLD = 0.1  # Original: confianca_detectar_carro
 FRAME_SKIP_INTERVAL = 1     # Original: intervalo_frames
 ROTATION_ANGLES = [0, 15]   # Angles for plate rotation
@@ -20,7 +43,27 @@ DESKTOP_PATH = os.path.join(os.path.expanduser("~"), "Desktop")
 
 # results = {} # Unused
 
-detector_placa = YOLO(MODEL_PATH)
+# Verifica se o arquivo de pesos existe; se não, tenta fallback para o arquivo local do repo
+model_path_to_use = MODEL_PATH
+if not os.path.isfile(model_path_to_use):
+    repo_weight = os.path.join(os.path.dirname(__file__), "yolov8n.pt")
+    if os.path.isfile(repo_weight):
+        print(f"Aviso: arquivo de pesos não encontrado em '{MODEL_PATH}'. Usando fallback '{repo_weight}'.")
+        model_path_to_use = repo_weight
+    else:
+        raise FileNotFoundError(
+            f"Arquivo de pesos não encontrado em '{MODEL_PATH}' e fallback '{repo_weight}' inexistente."
+        )
+
+# Inicializa o modelo YOLO com tratamento de erro para mensagens mais claras
+try:
+    detector_placa = YOLO(model_path_to_use)
+except Exception as e:
+    raise RuntimeError(
+        "Falha ao carregar pesos do YOLO. Possíveis causas: (1) incompatibilidade entre versões do PyTorch/Ultralytics; "
+        "(2) arquivo de pesos corrompido; (3) mudança recente do torch.load (weights_only). "
+        "Atualize ultralytics ou ajuste as versões de torch, ou re-exporte os pesos."
+    ) from e
 cap = cv2.VideoCapture(VIDEO_SOURCE)
 
 if not cap.isOpened():
