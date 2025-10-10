@@ -8,3 +8,13 @@
 [23/09/2025  3:00:16,14] Restart programado executado com sucesso 
 [24/09/2025  3:00:16,19] Restart programado executado com sucesso 
 [25/09/2025  3:00:16,17] Restart programado executado com sucesso 
+[30/09/2025  3:00:16,17] Restart programado executado com sucesso 
+[01/10/2025  3:00:16,20] Restart programado executado com sucesso 
+[02/10/2025  3:00:16,14] Restart programado executado com sucesso 
+[03/10/2025  3:00:16,19] Restart programado executado com sucesso 
+[04/10/2025  3:00:16,20] Restart programado executado com sucesso 
+[05/10/2025  3:01:59,44] Restart programado executado com sucesso 
+[06/10/2025  3:00:16,20] Restart programado executado com sucesso 
+[07/10/2025  3:00:16,21] Restart programado executado com sucesso 
+[08/10/2025  3:00:16,17] Restart programado executado com sucesso 
+[09/10/2025  3:00:16,17] Restart programado executado com sucesso 

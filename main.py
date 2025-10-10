@@ -4,25 +4,68 @@ from ultralytics import YOLO
 # Tente importar e, se não existir, crie um alias para manter compatibilidade durante o unpickling.
 import requests
 import time
+import os
 
 # --- CONFIGURAÇÃO ---
 # URL do seu Webhook de Produção do n8n
 N8N_WEBHOOK_URL = "https://campusinteligente.ifsuldeminas.edu.br/n8n/webhook/0615ade6-36bb-46b2-813b-84ada7c61a55"
-HEARTBEAT_INTERVALO_SEGUNDOS = 900  # 900 segundos = 15 minutos
+HEARTBEAT_INTERVALO_SEGUNDOS = 900  # 30 segundos para detecção mais rápida de falhas
 
-# --- FUNÇÃO DE HEARTBEAT ---
+# Sistema de saúde do heartbeat
+heartbeat_falhas_consecutivas = 0
+MAX_FALHAS_HEARTBEAT = 3  # Máximo de falhas antes de considerar sistema crítico
+
+# --- FUNÇÃO DE HEARTBEAT MELHORADA ---
 def enviar_sinal_de_vida():
     """
     Envia uma requisição para o n8n para informar que o script está rodando.
-    Usa try/except para garantir que, se o n8n estiver fora do ar,
-    isso não irá travar a sua automação principal.
+    Inclui dados sobre status do sistema e verifica saúde real do loop principal.
     """
+    global heartbeat_falhas_consecutivas
+    
     try:
-        # O timeout é importante para não deixar seu script travado
-        requests.get(N8N_WEBHOOK_URL, timeout=15)
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Sinal de vida (heartbeat) enviado com sucesso.")
+        # Verifica se o loop principal está realmente funcionando
+        tempo_ultimo_frame = time.time() - getattr(enviar_sinal_de_vida, 'ultimo_frame_time', time.time())
+        loop_saudavel = tempo_ultimo_frame < 60  # Se processou frame nos últimos 60s
+        
+        # Dados do sistema para enviar no heartbeat
+        uptime = int(time.time() - start_time)
+        payload = {
+            "timestamp": time.time(),
+            "datetime": time.strftime('%Y-%m-%d %H:%M:%S'),
+            "uptime_seconds": uptime,
+            "uptime_minutes": round(uptime / 60, 1),
+            "placas_detectadas": placas_detectadas_total,
+            "placas_ignoradas": placas_ignoradas_total,
+            "status": "healthy" if loop_saudavel else "degraded",
+            "frame_atual": frame_nmr if 'frame_nmr' in globals() else 0,
+            "pid": os.getpid(),
+            "loop_saudavel": loop_saudavel,
+            "tempo_ultimo_frame": tempo_ultimo_frame,
+            "falhas_consecutivas": heartbeat_falhas_consecutivas
+        }
+        
+        # Envia GET com dados como query parameters
+        response = requests.get(N8N_WEBHOOK_URL, params=payload, timeout=15)
+        response.raise_for_status()
+        
+        # Reset contador de falhas em caso de sucesso
+        heartbeat_falhas_consecutivas = 0
+        
+        status_icon = "✅" if loop_saudavel else "⚠️"
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {status_icon} Heartbeat enviado - Status: {payload['status']}, Uptime: {payload['uptime_minutes']}min, Placas: {placas_detectadas_total}")
+        
+        return True
+        
     except requests.exceptions.RequestException as e:
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] ATENÇÃO: Falha ao enviar sinal de vida para o n8n. Erro: {e}")
+        heartbeat_falhas_consecutivas += 1
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] ❌ FALHA {heartbeat_falhas_consecutivas}: Erro ao enviar heartbeat para N8N. Erro: {e}")
+        
+        # Se muitas falhas consecutivas, considera sistema crítico
+        if heartbeat_falhas_consecutivas >= MAX_FALHAS_HEARTBEAT:
+            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 🚨 SISTEMA CRÍTICO: {heartbeat_falhas_consecutivas} falhas consecutivas de heartbeat!")
+        
+        return False
 try:
     import ultralytics.utils as _yu  # type: ignore
 except Exception:
@@ -47,7 +90,6 @@ import cv2
 import numpy as np 
 from datetime import datetime
 import gc
-import os
 import threading
 import queue
 import json
@@ -66,7 +108,7 @@ DESKTOP_PATH = os.path.join(os.path.expanduser("~"), "Desktop")
 
 # Sistema de cooldown para evitar capturas duplicadas
 COOLDOWN_SEGUNDOS = 3           # Tempo mínimo entre capturas da mesma placa
-MAX_PLACAS_POR_MINUTO = 100      # Limite máximo de placas por minuto
+MAX_PLACAS_POR_MINUTO = 500      # Limite máximo de placas por minuto
 HASH_IMAGE_SIZE = (64, 32)      # Tamanho para normalização do hash
 
 # Estruturas de dados para controle de duplicatas
@@ -327,11 +369,18 @@ try:
             else:
                 print(f"Coordenadas da placa ({x1_p},{y1_p},{x2_p},{y2_p}) fora dos limites da imagem ({img_w}x{img_h}). Frame: {frame_nmr}")
         
+        # Atualiza timestamp do último frame para heartbeat
+        enviar_sinal_de_vida.ultimo_frame_time = time.time()
+        
         # Lógica para enviar sinal de vida para N8N periodicamente
         current_time = time.time()
         if current_time - ultimo_heartbeat_n8n > HEARTBEAT_INTERVALO_SEGUNDOS:
-            enviar_sinal_de_vida()
+            heartbeat_sucesso = enviar_sinal_de_vida()
             ultimo_heartbeat_n8n = current_time
+            
+            # Se falhou muitas vezes, pode indicar problema de conectividade
+            if not heartbeat_sucesso and heartbeat_falhas_consecutivas >= MAX_FALHAS_HEARTBEAT:
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] ⚠️ Continuando execução apesar das falhas de heartbeat...")
         
         # Limpeza automática dos buffers a cada 100 frames
         if frame_nmr % 100 == 0:
@@ -343,12 +392,30 @@ try:
 finally:
     print("Finalizando o processamento...")
     
+    # Envia último heartbeat com status de finalização
+    try:
+        uptime = int(time.time() - start_time)
+        payload_final = {
+            "timestamp": time.time(),
+            "datetime": time.strftime('%Y-%m-%d %H:%M:%S'),
+            "uptime_seconds": uptime,
+            "status": "stopping",
+            "placas_detectadas": placas_detectadas_total,
+            "pid": os.getpid(),
+            "motivo_parada": "finalizacao_normal"
+        }
+        requests.get(N8N_WEBHOOK_URL, params=payload_final, timeout=10)
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 🔄 Heartbeat final enviado - Status: stopping")
+    except:
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] ⚠️ Não foi possível enviar heartbeat final")
+    
     # Estatísticas finais do sistema de cooldown
     uptime_total = time.time() - start_time
     print(f"\n=== ESTATÍSTICAS FINAIS ===")
     print(f"Tempo de execução: {uptime_total/60:.1f} minutos")
     print(f"Placas salvas: {placas_detectadas_total}")
     print(f"Placas ignoradas (cooldown): {placas_ignoradas_total}")
+    print(f"Falhas de heartbeat: {heartbeat_falhas_consecutivas}")
     if placas_detectadas_total + placas_ignoradas_total > 0:
         taxa_aproveitamento = (placas_detectadas_total / (placas_detectadas_total + placas_ignoradas_total)) * 100
         print(f"Taxa de aproveitamento: {taxa_aproveitamento:.1f}%")
