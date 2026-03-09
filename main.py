@@ -97,14 +97,16 @@ import time
 import hashlib
 
 # --- Constants ---
-MODEL_PATH = "C:\\Users\\projeto\\Desktop\\bestn.pt"
-# VIDEO_SOURCE = "C:\\Users\\12265587630\\Desktop\\g.mp4"
+# Caminho do modelo: relativo ao script (compatível com Linux/RPi e Windows)
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bestn.pt")
+# VIDEO_SOURCE = "/home/pi/guarita/g.mp4"  # Exemplo local no RPi
 VIDEO_SOURCE = "rtsp://admin:123456789abc@10.12.8.63:554/cam/realmonitor?channel=1&subtype=0" # Example RTSP alternative
 CONFIDENCE_THRESHOLD = 0.1  # Original: confianca_detectar_carro
 FRAME_SKIP_INTERVAL = 1     # Original: intervalo_frames
 ROTATION_ANGLES = [0, 15]   # Angles for plate rotation
 OUTPUT_BASE_DIR_NAME = "placas_detectadas"
-DESKTOP_PATH = os.path.join(os.path.expanduser("~"), "Desktop")
+# No Linux/RPi headless ~/Desktop pode não existir; salva ao lado do script
+DESKTOP_PATH = os.path.dirname(os.path.abspath(__file__))
 
 # Sistema de cooldown para evitar capturas duplicadas
 COOLDOWN_SEGUNDOS = 3           # Tempo mínimo entre capturas da mesma placa
@@ -382,12 +384,12 @@ try:
             if not heartbeat_sucesso and heartbeat_falhas_consecutivas >= MAX_FALHAS_HEARTBEAT:
                 print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] ⚠️ Continuando execução apesar das falhas de heartbeat...")
         
-        # Limpeza automática dos buffers a cada 100 frames
+        # Limpeza automática dos buffers e memória a cada 100 frames
         if frame_nmr % 100 == 0:
             limpar_buffers_antigos()
+            gc.collect()  # Libera memória periodicamente (evita overhead a cada frame no RPi)
         
         del frame_to_process # Explicitly delete frame to help memory management
-        gc.collect()  # Força o coletor de lixo a liberar memória
 
 finally:
     print("Finalizando o processamento...")
@@ -430,5 +432,4 @@ finally:
     if cap.isOpened():
         cap.release()
         print("Recursos da câmera liberados.")
-    cv2.destroyAllWindows() # Good practice, though not strictly necessary for non-GUI script
     print("Script encerrado.")
