@@ -99,8 +99,8 @@ import hashlib
 # --- Constants ---
 # Caminho do modelo: relativo ao script (compatível com Linux/RPi e Windows)
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bestn.pt")
-# VIDEO_SOURCE = "/home/pi/guarita/g.mp4"  # Exemplo local no RPi
-VIDEO_SOURCE = "rtsp://admin:123456789abc@10.12.8.63:554/cam/realmonitor?channel=1&subtype=0" # Example RTSP alternative
+# VIDEO_SOURCE = "rtsp://admin:123456789abc@10.12.8.63:554/cam/realmonitor?channel=1&subtype=0"  # Câmera IP (usar no Windows)
+VIDEO_SOURCE = "/home/jean/Desktop/teste.mp4"  # Vídeo local no RPi
 CONFIDENCE_THRESHOLD = 0.1  # Original: confianca_detectar_carro
 FRAME_SKIP_INTERVAL = 1     # Original: intervalo_frames
 ROTATION_ANGLES = [0, 15]   # Angles for plate rotation
